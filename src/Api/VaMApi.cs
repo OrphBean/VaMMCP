@@ -1111,8 +1111,19 @@ namespace VaMMCP.Api {
 			string controlId = S(args, "control");
 			if (controlId == "") throw new ApiError("control required (see list_controls)");
 			FreeControllerV3 fc = GetControl(p, controlId);
-			if (Has(args, "position")) fc.SetPositionNoForce(ParseVec3(args["position"]));
-			if (Has(args, "rotation")) fc.SetRotationNoForce(ParseVec3(args["rotation"]));
+			// Drive the controller the way the VaM UI gizmo does (MoveControl /
+			// RotateControl) so the driven skeleton follows. The *NoForce variants
+			// only move the control transform and leave the driven joints behind,
+			// which is why a main-controller turn captured only a partial/twisted
+			// pose. Fall back to NoForce if the strong path is unavailable.
+			if (Has(args, "position")) {
+				Vector3 pos = ParseVec3(args["position"]);
+				try { fc.MoveControl(pos); } catch { fc.SetPositionNoForce(pos); }
+			}
+			if (Has(args, "rotation")) {
+				Vector3 rot = ParseVec3(args["rotation"]);
+				try { fc.RotateControl(rot); } catch { fc.SetRotationNoForce(rot); }
+			}
 			JSONClass r = new JSONClass();
 			r["person"] = p.uid;
 			r["control"] = controlId;
@@ -1606,38 +1617,56 @@ namespace VaMMCP.Api {
 		private const int MaxInlineImageBytes = 4 * 1024 * 1024;
 
 		public JSONNode CaptureView(JSONNode args) {
-			Camera cam = MonitorCamera();
 			int w = (int)Num(args, "width", 1280);
 			int h = (int)Num(args, "height", 720);
 			if (w < 64 || h < 64) throw new ApiError("width/height too small");
 			if (w > 4096 || h > 4096) throw new ApiError("width/height too large (max 4096)");
 			bool returnImage = Bool(args, "return_image", false);
+			int settleMs = (int)Num(args, "settle_ms", 350);
 			string path = S(args, "path");
 			if (path == "") path = "Saves/PluginData/vam-mcp/preview.png";
 			FileManagerSecure.CreateDirectory("Saves/PluginData/vam-mcp");
 
-			RenderTexture rt = new RenderTexture(w, h, 24);
-			RenderTexture oldTarget = cam.targetTexture;
-			RenderTexture oldActive = RenderTexture.active;
-			Texture2D tex = null;
-			string base64 = null;
-			int pngBytes = 0;
-			try {
+			// Person-inclusive capture: bind the monitor camera's targetTexture and
+			// let Unity render NATURAL frames. An explicit cam.Render() does not draw
+			// VaM Person atoms (they are drawn through VaM's own per-frame path), so
+			// the old synchronous render omitted the character. This mirrors the
+			// two-step external capture (set RT -> settle -> read).
+			RenderTexture rt = null;
+			Camera cam = null;
+			RenderTexture oldTarget = null;
+			Mt.Run(delegate {
+				cam = MonitorCamera();
+				oldTarget = cam.targetTexture;
+				rt = new RenderTexture(w, h, 24);
 				cam.targetTexture = rt;
-				cam.Render();
-				RenderTexture.active = rt;
-				tex = new Texture2D(w, h, TextureFormat.RGB24, false);
-				tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
-				tex.Apply();
-				byte[] bytes = tex.EncodeToPNG();
-				pngBytes = bytes.Length;
-				FileManagerSecure.WriteAllBytes(path, bytes);
+			}, 15000);
+
+			Thread.Sleep(settleMs);
+
+			byte[] bytes = null;
+			Mt.Run(delegate {
+				RenderTexture oldActive = RenderTexture.active;
+				Texture2D tex = null;
+				try {
+					RenderTexture.active = rt;
+					tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+					tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+					tex.Apply();
+					bytes = tex.EncodeToPNG();
+				} finally {
+					RenderTexture.active = oldActive;
+					if (tex != null) UnityEngine.Object.Destroy(tex);
+					if (cam != null) cam.targetTexture = oldTarget;
+					if (rt != null) rt.Release();
+				}
+			}, 15000);
+
+			int pngBytes = bytes != null ? bytes.Length : 0;
+			string base64 = null;
+			if (bytes != null) {
+				Mt.Run(delegate { FileManagerSecure.WriteAllBytes(path, bytes); }, 15000);
 				if (returnImage && bytes.Length <= MaxInlineImageBytes) base64 = Convert.ToBase64String(bytes);
-			} finally {
-				cam.targetTexture = oldTarget;
-				RenderTexture.active = oldActive;
-				if (tex != null) UnityEngine.Object.Destroy(tex);
-				rt.Release();
 			}
 			JSONClass r = new JSONClass();
 			r["path"] = path;

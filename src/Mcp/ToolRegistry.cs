@@ -233,11 +233,13 @@ namespace VaMMCP.Mcp {
 				.P("rotation", "array", "[x, y, z] euler angles", false)
 				.P("fov", "number", "Field of view in degrees", false)
 				.Fn(api.SetCamera));
-			tools.Add(new Tool("capture_view", "Render the monitor camera to a PNG file (default Saves/PluginData/vam-mcp/preview.png) and return its path. Set return_image=true to also get the picture back inline, for clients that cannot read the VaM folder themselves.")
+			tools.Add(new Tool("capture_view", "Render the monitor camera to a PNG file (default Saves/PluginData/vam-mcp/preview.png) and return its path. Person-inclusive: binds the camera targetTexture and lets VaM render natural frames, so Person atoms appear (an explicit Camera.Render() omits them). Set return_image=true to also get the picture back inline, for clients that cannot read the VaM folder themselves.")
 				.P("width", "number", "Image width (default 1280, max 4096)", false)
 				.P("height", "number", "Image height (default 720, max 4096)", false)
 				.P("path", "string", "Optional output path", false)
+				.P("settle_ms", "number", "Milliseconds to let natural frames render before reading (default 350)", false)
 				.P("return_image", "boolean", "Return the PNG inline as an MCP image (default false; keep the resolution modest, e.g. 640x360, and note that images above 4 MB stay on disk only)", false)
+				.Timeout(30000).Poller()
 				.Fn(api.CaptureView));
 
 			// ---------- simulation ----------
