@@ -55,6 +55,20 @@ with `list_storable_params`, write with `set_param`. That is where the "covers e
 claim comes from. Morphs are the heart of character sculpting (`DAZMorph.morphValue`), and a
 loaded VaM plugin simply becomes another storable on the atom, so the generic layer reaches it too.
 
+### Person-inclusive capture
+
+`capture_view` renders the **live Person atoms** in the scene. It binds the monitor camera's
+`targetTexture` and lets VaM render a natural frame, because an explicit `Camera.Render()` does
+not draw VaM persons. The monitor UI is hidden by default (`hide_ui=true`; each UI root's prior
+active state is restored afterwards) so the menu does not cover the character; pass
+`hide_ui=false` to keep the UI.
+
+> **Content note — SFW use only.** Rendering the live Person atom was deliberately avoided in
+> the stock tool: VaM is an adult platform, and an arbitrary scene screenshot can contain NSFW
+> content that must not be forwarded to an LLM or any remote client. This fork enables live-person
+> capture **for SFW use cases only** (e.g. debugging character pose, alignment and retargeting).
+> Do not use `return_image` or forward captures from scenes containing adult content.
+
 ## 📦 Requirements
 
 - Virt-A-Mate 1.20+ (developed against 1.22.0.13 / Unity 2018.1.9f2 / Mono)

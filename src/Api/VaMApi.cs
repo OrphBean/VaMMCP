@@ -1622,6 +1622,7 @@ namespace VaMMCP.Api {
 			if (w < 64 || h < 64) throw new ApiError("width/height too small");
 			if (w > 4096 || h > 4096) throw new ApiError("width/height too large (max 4096)");
 			bool returnImage = Bool(args, "return_image", false);
+			bool hideUi = Bool(args, "hide_ui", true);
 			int settleMs = (int)Num(args, "settle_ms", 350);
 			string path = S(args, "path");
 			if (path == "") path = "Saves/PluginData/vam-mcp/preview.png";
@@ -1632,11 +1633,41 @@ namespace VaMMCP.Api {
 			// VaM Person atoms (they are drawn through VaM's own per-frame path), so
 			// the old synchronous render omitted the character. This mirrors the
 			// two-step external capture (set RT -> settle -> read).
+			//
+			// The monitor camera also renders VaM's UI overlay, which otherwise
+			// covers the character. When hide_ui (default), temporarily deactivate
+			// the monitor UI root for the capture and restore its prior active state.
 			RenderTexture rt = null;
 			Camera cam = null;
 			RenderTexture oldTarget = null;
+			List<GameObject> hiddenUi = null;
+			List<bool> hiddenUiState = null;
 			Mt.Run(delegate {
 				cam = MonitorCamera();
+				if (hideUi) {
+					try {
+						// The monitor overlay is spread across several UI roots
+						// (menu panels + the bottom Play/Edit bar). Hide them all
+						// for the capture and restore each root's prior active state.
+						Transform[] roots = new Transform[] {
+							SC.MonitorUI, SC.MonitorUIAnchor, SC.MonitorUIAttachPoint,
+							SC.MonitorModeAuxUI, SC.mainMenuUI, SC.sceneControlUI,
+							SC.sceneControlUIAlt, SC.worldUI, SC.topWorldUI,
+							SC.alternateCustomUI
+						};
+						hiddenUi = new List<GameObject>();
+						hiddenUiState = new List<bool>();
+						for (int i = 0; i < roots.Length; i++) {
+							Transform tr = roots[i];
+							if (tr == null) continue;
+							GameObject go = tr.gameObject;
+							if (go == null) continue;
+							hiddenUi.Add(go);
+							hiddenUiState.Add(go.activeSelf);
+							go.SetActive(false);
+						}
+					} catch { }
+				}
 				oldTarget = cam.targetTexture;
 				rt = new RenderTexture(w, h, 24);
 				cam.targetTexture = rt;
@@ -1659,6 +1690,11 @@ namespace VaMMCP.Api {
 					if (tex != null) UnityEngine.Object.Destroy(tex);
 					if (cam != null) cam.targetTexture = oldTarget;
 					if (rt != null) rt.Release();
+					if (hiddenUi != null) {
+						for (int i = 0; i < hiddenUi.Count; i++) {
+							try { hiddenUi[i].SetActive(hiddenUiState[i]); } catch { }
+						}
+					}
 				}
 			}, 15000);
 
@@ -2117,7 +2153,23 @@ namespace VaMMCP.Api {
 			string source = BuildEvalSource(code);
 			DynamicCSharp.ScriptProxy proxy;
 			if (!evalCache.TryGetValue(source, out proxy)) {
-				DynamicCSharp.ScriptType type = domain.CompileAndLoadScriptSource(source);
+				// DynamicCSharp's in-memory CompileAndLoadScriptSource crashes the
+				// bundled Mono.CSharp parser (System.IndexOutOfRangeException in
+				// Mono.CSharp.Location..ctor during Parse) because it builds the
+				// SourceFile with empty name/path (McsCompiler.
+				// CompileAssemblyFromSourceBatch). VaM's own plugin compilation is
+				// file-based and works, so compile the wrapper from a real temp file
+				// via CompileAndLoadScriptFile instead.
+				string tmp = System.IO.Path.Combine(
+					System.IO.Path.GetTempPath(),
+					"vammcp_eval_" + Guid.NewGuid().ToString("N") + ".cs");
+				DynamicCSharp.ScriptType type;
+				System.IO.File.WriteAllText(tmp, source);
+				try {
+					type = domain.CompileAndLoadScriptFile(tmp);
+				} finally {
+					try { System.IO.File.Delete(tmp); } catch { }
+				}
 				if (type == null) throw new ApiError("eval compilation failed (see VaM output_log.txt for compiler errors)");
 				proxy = type.CreateInstance();
 				if (proxy == null) throw new ApiError("eval failed to instantiate compiled type");

@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- `capture_view` is now **person-inclusive**: it binds the monitor camera's `targetTexture` and
+  lets VaM render natural frames, so the **live Person atoms appear** in the screenshot (an
+  explicit `Camera.Render()` does not draw VaM persons). The monitor UI is hidden for the capture
+  by default (new `hide_ui` argument, default `true`; each UI root's prior active state is
+  restored afterwards) so the menu does not cover the character.
+  > **Content note — SFW use only.** Rendering the live Person atom was deliberately avoided in
+  > the stock tool because VaM is an adult platform and an arbitrary scene capture can contain
+  > NSFW content that must not be forwarded to an LLM or remote client. This change is intended
+  > for SFW use cases (e.g. debugging character pose and alignment) only.
+
+### Fixed
+- `eval_cs` compiled via DynamicCSharp's in-memory `CompileAndLoadScriptSource`, which crashes
+  the bundled Mono.CSharp parser (`System.IndexOutOfRangeException` in `Mono.CSharp.Location..ctor`
+  during Parse) because the `SourceFile` is built with an empty name/path
+  (`McsCompiler.CompileAssemblyFromSourceBatch`). It now writes the wrapper to a temp `.cs` file and
+  compiles it with `CompileAndLoadScriptFile` (the file-based path VaM itself uses), then deletes
+  the temp file.
+
 ## [1.0.1] - 2026-08-21
 
 ### Changed

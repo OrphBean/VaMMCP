@@ -113,7 +113,7 @@ VaM runtime status: plugin version, VaM version, atom/person counts, endpoint, e
 | --- | --- | --- |
 | `get_camera` | — | Monitor camera position / rotation / FOV |
 | `set_camera` | `position?`, `rotation?`, `fov?` | Move the camera |
-| `capture_view` | `width?`, `height?`, `path?`, `return_image?` | Render a screenshot (default `Saves/PluginData/vam-mcp/preview.png`). With `return_image=true` the PNG also comes back as an MCP image block, so clients that cannot read the VaM folder can still see it — keep the resolution modest (e.g. 640×360); anything above 4 MB stays on disk only |
+| `capture_view` | `width?`, `height?`, `path?`, `hide_ui?`, `return_image?` | Render a screenshot (default `Saves/PluginData/vam-mcp/preview.png`). **Person-inclusive:** it binds the monitor camera `targetTexture` and lets VaM render a natural frame, so live Person atoms appear (an explicit `Camera.Render()` omits them). The monitor UI is hidden for the capture by default (`hide_ui=true`; prior active states restored) — pass `hide_ui=false` to include it. With `return_image=true` the PNG also comes back as an MCP image block, so clients that cannot read the VaM folder can still see it — keep the resolution modest (e.g. 640×360); anything above 4 MB stays on disk only. **Content note:** rendering the live Person atom can capture adult (NSFW) content — intended for SFW use only; never forward captures from adult scenes to an LLM |
 
 ## Simulation
 
